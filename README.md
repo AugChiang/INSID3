@@ -129,25 +129,22 @@ cd ..
 
 INSID3 builds on two key observations about DINOv3 features.
 
-### Dense DINOv3 Features
-
-Dense DINOv3 features naturally induce a **structured decomposition of the scene**. By clustering them, we obtain coherent object- and part-level regions without supervision.
+(i) **Dense DINOv3 features** naturally induce a **structured decomposition of the scene**. By clustering them, we obtain coherent object- and part-level regions without supervision.
 
 <p align="center">
-  <img src="assets/clustering.png" alt="Dense DINOv3 features" width="90%">
+  <img src="assets/clustering.png" alt="Dense DINOv3 features" width="80%">
 </p>
 
-### DINOv3 Capture Semantics, but Also Exhibit Positional Bias
 
-Besides semantic matches, DINOv3 also **responds to absolute image position**. Given a patch on the bird’s tail in the reference image, the DINOv3 similarity map activates on (i) the tail in the target image, but also (ii) over the left portion of the image.
+(ii) Besides semantic matches, DINOv3 also **responds to absolute image position**. Given a patch on the bird’s tail in the reference image, the DINOv3 similarity map activates on (i) the tail in the target image, but also (ii) over the left portion of the image.
 <p align="center">
-  <img src="assets/similarity_maps.png" alt="Dense DINOv3 features" width="65%">
+  <img src="assets/similarity_maps.png" alt="Dense DINOv3 features" width="55%">
 </p>
 
-PCA on low-semantic-content images reveals that this effect lives in a stable **low-dimensional subspace**. INSID3 removes it in a simple training-free way: we identify the positional component of DINOv3 features and project onto its **orthogonal complement**. This suppresses coordinate-driven responses while preserving semantic structure.
+PCA on low-semantic-content images reveals that this effect lives in a stable **low-dimensional subspace**. INSID3 removes it in a training-free way: we identify the positional component of DINOv3 features and project onto its **orthogonal complement**. This suppresses coordinate-driven responses while preserving semantics.
 
 <p align="center">
-  <img src="assets/positional_subspace.png" alt="Dense DINOv3 features" width="90%">
+  <img src="assets/positional_subspace.png" alt="Dense DINOv3 features" width="80%">
 </p>
 
 ## Citation
