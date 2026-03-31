@@ -3,7 +3,7 @@
 # INSID3: Training-Free In-Context Segmentation with DINOv3
 
 <p align="center">
-  <a href="LINK_TO_PAPER"><img src="https://img.shields.io/badge/Paper-arXiv-red?style=flat-square&labelColor=444444" alt="Paper arXiv"></a>
+  <a href="https://arxiv.org/abs/2603.28480"><img src="https://img.shields.io/badge/Paper-arXiv-red?style=flat-square&labelColor=444444" alt="Paper arXiv"></a>
   <a href=https://visinf.github.io/INSID3/><img src="https://img.shields.io/badge/Project-Page-1f6feb?style=flat-square&labelColor=444444" alt="Project Page"></a>
 </p>
 
