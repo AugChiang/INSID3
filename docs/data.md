@@ -69,19 +69,22 @@ INSID3/
 ## Instructions
 
 Run all commands below from the `INSID3/data/` directory.  
-Some datasets require `gdown` for Google Drive downloads (`pip install gdown`). If you prepare the ISIC 2018 dataset, its preprocessing step also requires `pandas` (`pip install pandas`).
+Some datasets require `gdown` for Google Drive downloads (`pip install gdown`). 
 
 ### 🥥 COCO-20<sup>i</sup>
 
-Download COCO2014 train/val images and annotations:
-```
+Download the COCO 2014 train/val images, annotations, and splits by running:
+```bash
 mkdir -p COCO2014 && cd COCO2014
+
+# COCO 2014 images
 wget http://images.cocodataset.org/zips/train2014.zip
 wget http://images.cocodataset.org/zips/val2014.zip
 unzip train2014.zip
 unzip val2014.zip
 rm -f *.zip
 
+# Annotations
 mkdir -p annotations && cd annotations
 gdown --fuzzy https://drive.google.com/file/d/1cwup51kcr4m7v9jO14ArpxKMA4O3-Uge/view
 gdown --fuzzy https://drive.google.com/file/d/1PNw4U3T2MhzAEBWGGgceXvYU3cZ7mJL1/view
@@ -90,17 +93,18 @@ unzip val2014.zip
 rm -f *.zip
 cd ..
 
+# Split files
 gdown --fuzzy https://drive.google.com/file/d/1K1UxhUzpjCe1jtgpsEUyrvU8gAlH1ZMy/view
 unzip splits.zip
 rm -f splits.zip
 cd ..
 ```
 
-As an alternative to downloading [splits.zip](https://drive.google.com/file/d/1K1UxhUzpjCe1jtgpsEUyrvU8gAlH1ZMy/view?usp=sharing), you can retrieve the `splits` folder directly from the original source: [Matcher](https://github.com/aim-uofa/Matcher/tree/main/datasets/COCO2014/splits).
+As an alternative to downloading [splits.zip](https://drive.google.com/file/d/1K1UxhUzpjCe1jtgpsEUyrvU8gAlH1ZMy/view?usp=sharing), you can retrieve the `splits` folder directly from the original source: [Matcher/datasets/COCO2014/splits](https://github.com/aim-uofa/Matcher/tree/main/datasets/COCO2014/splits).
 
 ### 🦉 LVIS-92<sup>i</sup>
 Download the COCO 2017 train/val images and the LVIS mask annotations:
- ```
+```bash
 mkdir -p LVIS/coco && cd LVIS/coco
 
 # COCO 2017 images
@@ -123,7 +127,7 @@ cd ..
 
 ### 🧩 PACO-Part
 PACO-Part uses the same COCO 2017 images as LVIS. The following commands create a symbolic link to `data/LVIS/coco/` and then download the PACO-Part mask annotations (if you have not prepared LVIS, make sure `data/LVIS/coco/` exists first; see the LVIS instructions above):
- ```
+```bash
 mkdir -p PACO-Part && cd PACO-Part
 
 # Reuse the COCO 2017 images from LVIS
@@ -141,7 +145,7 @@ cd ..
 ### 🔩 Pascal-Part
 Download the VOC 2010 train/val images together with the Pascal-Part mask annotations:
 
- ```
+```bash
 mkdir -p Pascal-Part && cd Pascal-Part
 
 # VOC 2010 images
@@ -155,13 +159,13 @@ mv pascal/* VOCdevkit/VOC2010/
 rm -rf pascal.zip pascal VOCtrainval_03-May-2010.tar
 cd ..
  ```
-
+This should result in 11321 images in `VOCdevkit/VOC2010/JPEGImages`.
 
 
 ### 🩺 ISIC 2018
 Download the ISIC 2018 training images and ground-truth masks, then preprocess the images following [DR-Adapter](https://github.com/Matt-Su/DR-Adapter) so that `ISIC2018_Task1-2_Training_Input/` is reorganized into the `1/`, `2/`, and `3/` subfolders:
 
-```
+```bash
 mkdir -p ISIC && cd ISIC
 
 # ISIC 2018 images and ground-truth masks
@@ -182,19 +186,20 @@ rm -rf isic
 rm -f ISIC2018_Task1-2_Training_Input/*.jpg
 cd ..
 ```
-This should result in 2594 images and 2594 masks in total.
+Note: preparing ISIC additionally requires `pandas` (`pip install pandas`).
+This should result in 2594 images and 2594 masks in total, split into 3 folds (1/, 2/, and 3/). The three folds contain 208, 1867, and 519 images.
 
 ### 🫁 Chest X-ray
 Download the Chest X-ray dataset from [Chest X-ray](https://www.kaggle.com/datasets/nikhilpandey360/chest-xray-masks-and-labels) by running:
 
 
-```
+```bash
 mkdir -p LungSegmentation && cd LungSegmentation
 curl -L -o chest-xray-masks-and-labels.zip \
     https://www.kaggle.com/api/v1/datasets/download/nikhilpandey360/chest-xray-masks-and-labels
 unzip chest-xray-masks-and-labels.zip
 mv 'Lung Segmentation'/* .
-rm -rf 'Lung Segmentation' *.zip
+rm -rf 'Lung Segmentation' data *.zip
 cd ..
 ```
 This should result in 800 images (`CXR_png/`) and 704 masks (`masks/`).
@@ -207,7 +212,7 @@ We prepare the SUIM dataset following [ABCDFSS](https://github.com/Vision-Kek/AB
 
 
 
-```
+```bash
 mkdir -p SUIM && cd SUIM
 curl -L -o suim-merged.zip \
     https://www.kaggle.com/api/v1/datasets/download/heyoujue/suim-merged
@@ -224,7 +229,7 @@ This should result in 1635 images and 1635 masks in total.
 Download the iSAID dataset and splits by running:
 
 
-```
+```bash
 mkdir -p iSAID && cd iSAID
 gdown --fuzzy https://drive.google.com/file/d/17PQ1iKCbaj2OjwBdCn_VBh09ntI4lxgL/view?usp=sharing -O iSAID_5i.zip
 unzip iSAID_5i.zip
@@ -236,18 +241,32 @@ unzip splits.zip
 rm -rf *.zip iSAID_patches
 cd ..
 ```
- 
+This should results in 6363 images  (`val/images/`) and 6363 masks (`val/semantic_png/`).
 
 ### 🎯 PerMIS
 
-The PerMIS dataset is derived from the [BURST dataset](https://github.com/Ali2500/BURST-benchmark). Download the required BURST data from the official repository:
+Download the required BURST data and prepare the PerMIS dataset following [Where’s Waldo](https://github.com/dvirsamuel/PDM) by running:
 
-```
+```bash
 mkdir -p PerMIRS && cd PerMIRS
-wget "https://motchallenge.net/data/1-TAO_TRAIN.zip" 
-wget "https://motchallenge.net/data/2-TAO_VAL.zip" 
-wget "https://motchallenge.net/data/3-TAO_TEST.zip" 
+
+# BURST data
+wget "https://motchallenge.net/data/3-TAO_TEST.zip"
 wget https://omnomnom.vision.rwth-aachen.de/data/BURST/annotations.zip
+
+unzip 3-TAO_TEST.zip
+unzip annotations.zip
+
+# PerMIS generation script
+git clone https://github.com/dvirsamuel/PDM.git
+
+cd PDM/PerMIRS
+sed -i 's|base_path = f"/PerMIRS/{i}"|base_path = f"../../{i}"|' permirs_gen_dataset.py
+PYTHONPATH=.:.. python permirs_gen_dataset.py --images_base_dir ../../frames --annotations_file ../../test/all_classes.json
+
+cd ../..
+rm -rf PDM *.zip test train val frames info
+cd ..
  ```
 
-Then follow the preprocessing steps provided in the [Where’s Waldo](https://github.com/dvirsamuel/PDM) repository to prepare the PerMIS dataset.
+This should result in 216 folders, each containing 3 frames and a `masks.npz` file.
