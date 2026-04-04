@@ -49,6 +49,22 @@ conda activate insid3
 pip install -r requirements.txt
 ```
 
+Alternative to conda, you can use [`uv`](https://docs.astral.sh/uv/#highlights), a fast Python package and environment manager.
+
+On macOS and Linux:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+To set up the environment using uv, run:
+
+```bash
+# Ensure CUDA 12.6 is loaded beforehand
+# This will automatically create a virtual environment (.venv) and install dependencies from pyproject.toml
+uv sync
+source .venv/bin/activate
+```
+
 ## 🧱 DINOv3 Weights
 
 INSID3 relies on a **frozen DINOv3 backbone**. Please download the pretrained weights from the official repository: 👉 https://github.com/facebookresearch/dinov3
