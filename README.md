@@ -28,7 +28,7 @@
 INSID3 solves in-context segmentation entirely within a single frozen DINOv3 backbone:
 
 🚀 **Training-free:** no fine-tuning, no segmentation decoder, no auxiliary models   
-🔍 **New insight:** identifies and removes a positional bias in DINOv3   
+🔍 **Insight:** we uncover and fix a positional bias in DINOv3 features, improving their reliability beyond segmentation  
 📈 **State-of-the-art, smaller & faster:** outperforms both training-free and specialized methods while using a single backbone  
 🌍 **Generalizes broadly:** from object-level to part-level and personalized segmentation, across natural, medical, underwater, and aerial domains  
 
@@ -36,10 +36,14 @@ INSID3 solves in-context segmentation entirely within a single frozen DINOv3 bac
   <img src="assets/teaser.png">
 </p>
 
+
 ## ⚙️ Environment Setup
 
-To get started, create a Conda environment and install the required dependencies.  
-INSID3 is compatible with **PyTorch ≥ 2.0**. The experiments in the paper were run with **PyTorch 2.7.1 (CUDA 12.6)**, which we provide as a reference configuration.
+INSID3 can be set up either with **Conda** or with **uv**. Choose one of the following options.
+
+### Option 1: Conda
+
+To get started, create a Conda environment and install the required dependencies. The experiments in the paper were run with **PyTorch 2.7.1 (CUDA 12.6)**, which we provide as a reference configuration.
 
 To set up the environment using Conda, run:
 
@@ -49,14 +53,23 @@ conda activate insid3
 pip install -r requirements.txt
 ```
 
-Alternative to conda, you can use [`uv`](https://docs.astral.sh/uv/#highlights), a fast Python package and environment manager.
+**Optional:** If you want to use CRF-based mask refinement, also install:
+```bash
+git clone https://github.com/netw0rkf10w/CRF.git
+cd CRF
+python setup.py install
+cd ..
+```
+
+### Option 2: uv
+As an alternative to Conda, you can use [`uv`](https://docs.astral.sh/uv/#highlights), a fast Python package and environment manager. In this setup, the optional CRF dependency is already included.
 
 On macOS and Linux:
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-To set up the environment using uv, run:
+Then run:
 
 ```bash
 # Ensure CUDA 12.6 is loaded beforehand
@@ -130,16 +143,6 @@ python inference.py --dataset coco --exp-name insid3-coco
 
 **Note:** By default, the predicted mask is upsampled to the original image resolution using **bilinear interpolation**. For additional refinement, enable **CRF-based refinement** with `--crf-mask-refinement`.
  
- To install the CRF refinement dependency, clone and install the CRF package:
-
-
-
-```bash
-git clone https://github.com/netw0rkf10w/CRF.git
-cd CRF
-python setup.py install
-cd ..
-```
 
 ## 💡 Why INSID3 Works
 
