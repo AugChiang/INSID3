@@ -1,0 +1,42 @@
+[project]
+name = "INSID3"
+version = "0.1.0"
+description = "INSID3: Training-Free In-Context Segmentation with DINOv3"
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "torch==2.7.1",
+    "torchvision==0.22.1",
+    "numpy",
+    "Pillow",
+    "einops",
+    "scikit-learn",
+    "pycocotools",
+    "tqdm",
+    "torchmetrics",
+    "termcolor",
+    "matplotlib",
+    "CRF @ git+https://github.com/netw0rkf10w/CRF.git",
+]
+
+[tool.uv]
+package = false
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'"
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126" }]
+torchvision = [{ index = "pytorch-cu126" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.extra-build-dependencies]
+crf = [
+    "setuptools",
+    "torch==2.7.1",
+]
