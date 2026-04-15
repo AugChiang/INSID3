@@ -6,3 +6,9 @@ output
 data
 pretrain
 CRF
+*.png
+*.jpg
+*.npy
+*.ipynb
+.gemini
+.env
