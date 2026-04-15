@@ -180,7 +180,7 @@ class INSID3(nn.Module):
             deb_sim_maps.append(deb_sim_m)
             
         self._sim_maps = sim_maps
-        self.deb_sim_maps = deb_sim_maps
+        self._deb_sim_maps = deb_sim_maps
 
         candidate_mask = self._locate_candidates(
             sim_maps, ref_masks, feat_tgt_deb, ref_prototype, h, w
