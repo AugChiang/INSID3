@@ -49,6 +49,19 @@ class INSID3(nn.Module):
         self._tgt_image = None
         self._orig_tgt_size = None
 
+        # sim maps
+        self._sim_maps = None
+        self._deb_sim_maps = None
+    
+    @property
+    def sim_maps(self):
+        return self._sim_maps
+    
+    @property
+    def deb_sim_maps(self):
+        return self._deb_sim_maps
+
+
     def set_reference(self, image: str | 'Image.Image', mask: str | 'Image.Image' | torch.Tensor) -> None:
         """Set reference image and mask from file paths or PIL Images.
 
@@ -133,6 +146,7 @@ class INSID3(nn.Module):
         _, _, C, h, w = fmaps_norm.shape
 
         ref_masks = ref_masks.unsqueeze(1)
+        feat_ref = fmaps_norm[:, :S]
         feat_tgt = fmaps_norm[:, S]
 
         # Positional debiasing
@@ -154,10 +168,20 @@ class INSID3(nn.Module):
         # Candidate localization (forward + backward matching)
         # Compute similarity maps between each reference and the target (debiased space)
         sim_maps = []
+        deb_sim_maps = []
         for m in range(S):
-            feat_ref_m = feat_refs_deb[:, m]
-            sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_m, feat_tgt_deb)
+            # biased
+            feat_ref_m = feat_ref[:, m]
+            sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_m, feat_tgt)
             sim_maps.append(sim_m)
+            # debiased
+            feat_ref_m_deb = feat_refs_deb[:, m]
+            deb_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_m_deb, feat_tgt_deb)
+            deb_sim_maps.append(deb_sim_m)
+            
+        self._sim_maps = sim_maps
+        self.deb_sim_maps = deb_sim_maps
+
         candidate_mask = self._locate_candidates(
             sim_maps, ref_masks, feat_tgt_deb, ref_prototype, h, w
         )
