@@ -3,6 +3,7 @@
 import torch
 
 from models.insid3 import INSID3
+from typing import Union
 
 _HUB_NAMES = {
     "small": "dinov3_vits16",
@@ -28,7 +29,7 @@ def _build_encoder(model_size: str = "large"):
 def build_insid3(
     *,
     model_size: str = "large",
-    image_size: int = 1024,
+    image_size: Union[int, list, tuple] = 1024,
     svd_components: int = 500,
     tau: float = 0.6,
     merge_threshold: float = 0.2,

@@ -5,10 +5,9 @@ import torch
 import torch.nn.functional as F
 import pycocotools.mask as mask_util
 from torchvision import transforms
-from typing import List
+from typing import List, Union
 
-
-def build_transform(image_size: int) -> transforms.Compose:
+def build_transform(image_size: Union[int, tuple, list]) -> transforms.Compose:
     """Build the standard image transform for INSID3 inference.
 
     Args:
@@ -17,8 +16,14 @@ def build_transform(image_size: int) -> transforms.Compose:
     Returns:
         A torchvision Compose transform.
     """
+    if isinstance(image_size, int):
+        image_size = (image_size, image_size)
+    elif isinstance(image_size, (list, tuple)):
+        assert len(image_size) == 2, "Invalid image size, should be [H,W]."
+    else:
+        raise TypeError
     return transforms.Compose([
-        transforms.Resize(size=(image_size, image_size)),
+        transforms.Resize(size=image_size),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
