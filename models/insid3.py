@@ -52,6 +52,10 @@ class INSID3(nn.Module):
         self._tgt_image = None
         self._orig_tgt_size = None
 
+        # sim maps
+        self._sim_maps = None
+        self._deb_sim_maps = None
+
         # patch size of DINOv3 = 16
         self._patch_size = 16
 
@@ -60,6 +64,8 @@ class INSID3(nn.Module):
         self._ref_masks = None
         self._tgt_image = None
         self._orig_tgt_size = None
+        self._sim_maps = None
+        self._deb_sim_maps = None
         return
 
     def set_reference(self, image: str | 'Image.Image', mask: str | 'Image.Image' | torch.Tensor) -> None:
@@ -204,7 +210,6 @@ class INSID3(nn.Module):
             candidate_mask, cluster_labels, cluster_protos, K,
             ref_prototype, feat_tgt, feat_tgt_deb, h, w
         )
-
         return self._finalize_mask(pred_mask, tgt_image)
 
     @torch.no_grad()
@@ -214,6 +219,9 @@ class INSID3(nn.Module):
         Returns:
             sim_maps: (sim_maps, debiased_sim_maps)
         """
+        if self._sim_maps is not None and self._deb_sim_maps is not None:
+            return self._sim_maps, self._deb_sim_maps
+
         def get_patch_divisible_size(img):
             if isinstance(img, Image.Image):
                 H, W = img.height, img.width
@@ -271,7 +279,8 @@ class INSID3(nn.Module):
             deb_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_refs_deb, feat_tgt_deb)
             bias_sim_maps.append(bias_sim_m)
             deb_sim_maps.append(deb_sim_m)
-
+        self._sim_maps = bias_sim_maps
+        self._deb_sim_maps = deb_sim_maps
         return bias_sim_maps, deb_sim_maps
 
     # ──────── Feature extraction ────────
