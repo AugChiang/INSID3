@@ -11,9 +11,12 @@ from utils.clustering import agglomerative_clustering, compute_cluster_prototype
 from utils.data import build_transform, downsample_mask
 from utils.refinement import upsample_mask, init_crf, crf_refine
 import math
+import numpy as np
 
 from PIL import Image
+from typing import Union, Tuple, List
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class INSID3(nn.Module):
     """Training-free in-context segmentation using a frozen DINOv3 encoder."""
@@ -21,23 +24,23 @@ class INSID3(nn.Module):
     def __init__(
         self,
         encoder: nn.Module,
-        image_size: int = 1024,
+        image_size: Union[int, list, tuple] = 1024,
         svd_components: int = 500,
         tau: float = 0.6,
         merge_threshold: float = 0.2,
         mask_refiner: str = "bilinear",
         resize_to_orig_size: bool = True,
-        device: str = "cuda",
+        device: str = DEVICE,
     ):
         super().__init__()
         self.encoder = encoder
-        self.image_size = image_size
+        self.image_size = (image_size, image_size) if isinstance(image_size, int) else image_size
         self.svd_components = svd_components
         self.tau = tau
         self.merge_threshold = merge_threshold
         self.mask_refiner = mask_refiner
         self.resize_to_orig_size = resize_to_orig_size
-
+        self.device = device
         self.positional_basis = self._build_positional_basis(device)
 
         if mask_refiner == 'crf':
@@ -49,18 +52,15 @@ class INSID3(nn.Module):
         self._tgt_image = None
         self._orig_tgt_size = None
 
-        # sim maps
-        self._sim_maps = None
-        self._deb_sim_maps = None
-    
-    @property
-    def sim_maps(self):
-        return self._sim_maps
-    
-    @property
-    def deb_sim_maps(self):
-        return self._deb_sim_maps
+        # patch size of DINOv3 = 16
+        self._patch_size = 16
 
+    def reset(self):
+        self._ref_images = None
+        self._ref_masks = None
+        self._tgt_image = None
+        self._orig_tgt_size = None
+        return
 
     def set_reference(self, image: str | 'Image.Image', mask: str | 'Image.Image' | torch.Tensor) -> None:
         """Set reference image and mask from file paths or PIL Images.
@@ -69,15 +69,12 @@ class INSID3(nn.Module):
             image: path (str) or PIL Image.
             mask:  path (str), PIL Image, or torch.Tensor (binary / grayscale).
         """
-        import numpy as np
         # Handle image
         if isinstance(image, str):
             image = Image.open(image).convert('RGB')
-        img_tensor = self._transform(image).unsqueeze(0).to(self.positional_basis.device)
         # Handle mask
         if isinstance(mask, torch.Tensor):
             mask_tensor = mask.unsqueeze(0) if mask.ndim == 2 else mask  # (H,W) or (1,H,W)
-            mask_tensor = mask_tensor.to(self.positional_basis.device)
             if mask_tensor.dtype != torch.bool:
                 mask_tensor = mask_tensor > 0
         else:
@@ -85,18 +82,14 @@ class INSID3(nn.Module):
                 mask = Image.open(mask)
             mask_tensor = torch.tensor(
                 np.array(mask) > 0, dtype=torch.bool
-            ).unsqueeze(0).to(self.positional_basis.device)
-        # Resize mask to model resolution
-        mask_tensor = F.interpolate(
-            mask_tensor.unsqueeze(0).float(),
-            size=(self.image_size, self.image_size), mode='nearest',
-        ).squeeze(0) > 0.5
+            ).unsqueeze(0)
+
         if self._ref_images is None:
-            self._ref_images = img_tensor
-            self._ref_masks = mask_tensor
+            self._ref_images = [image]
+            self._ref_masks = [mask_tensor]
         else:
-            self._ref_images = torch.cat([self._ref_images, img_tensor], dim=0)
-            self._ref_masks = torch.cat([self._ref_masks, mask_tensor], dim=0)
+            self._ref_images = self._ref_images.append(image)
+            self._ref_masks = self._ref_masks.append(mask)
 
     def set_target(self, image: str | 'Image.Image') -> None:
         """Set target image from a file path or PIL Image.
@@ -107,8 +100,7 @@ class INSID3(nn.Module):
         if isinstance(image, str):
             image = Image.open(image).convert('RGB')
         self._orig_tgt_size = (image.height, image.width)
-        img_tensor = self._transform(image).to(self.positional_basis.device)
-        self._tgt_image = img_tensor
+        self._tgt_image = image
 
     def segment(self) -> torch.Tensor:
         """Run prediction using previously set reference(s) and target.
@@ -116,13 +108,33 @@ class INSID3(nn.Module):
         Returns:
             pred_mask: (H, W) boolean mask at original target resolution.
         """
-        pred = self.predict(self._ref_images, self._ref_masks, self._tgt_image)
-        self._ref_images = None
-        self._ref_masks = None
-        self._tgt_image = None
-        self._orig_tgt_size = None
-        return pred
+        def handle_mask(mask_tensor: torch.Tensor):
+            # Resize mask to model resolution
+            mask_tensor = F.interpolate(
+                mask_tensor.unsqueeze(0).float(),
+                size=self.image_size, mode='nearest',
+            ).squeeze(0) > 0.5
+            return mask_tensor
+        
+        # ref image & ref mask
+        ref_img_tensor = self._transform(self._ref_images[0])
+        ref_img_tensor = ref_img_tensor.unsqueeze(0) # -> [1,C,H,W]
+        ref_mask_tensor = handle_mask(self._ref_masks[0]) # -> [1,H,W]
 
+        for n in range(1, len(self._ref_images)):
+            img_tensor = self._transform(self._ref_images[n])
+            img_tensor = img_tensor.unsqueeze(0)
+            mask_tensor = handle_mask(self._ref_masks[n])
+            # concat
+            ref_img_tensor = torch.cat([ref_img_tensor, img_tensor], dim=0)
+            ref_mask_tensor = torch.cat([ref_mask_tensor, mask_tensor], dim=0)
+        # move to device
+        ref_img_tensor = ref_img_tensor.to(self.device) # [S,C,H,W]
+        ref_mask_tensor = ref_mask_tensor.to(self.device) # [S,H,W]
+        # target image
+        tgt_img_tensor = self._transform(self._tgt_image).to(self.device)
+        pred = self.predict(ref_img_tensor, ref_mask_tensor, tgt_img_tensor)
+        return pred
 
     @torch.no_grad()
     def predict(self, ref_images: torch.Tensor, ref_masks: torch.Tensor, tgt_image: torch.Tensor) -> torch.Tensor:
@@ -146,7 +158,6 @@ class INSID3(nn.Module):
         _, _, C, h, w = fmaps_norm.shape
 
         ref_masks = ref_masks.unsqueeze(1)
-        feat_ref = fmaps_norm[:, :S]
         feat_tgt = fmaps_norm[:, S]
 
         # Positional debiasing
@@ -168,20 +179,10 @@ class INSID3(nn.Module):
         # Candidate localization (forward + backward matching)
         # Compute similarity maps between each reference and the target (debiased space)
         sim_maps = []
-        deb_sim_maps = []
         for m in range(S):
-            # biased
-            feat_ref_m = feat_ref[:, m]
-            sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_m, feat_tgt)
+            feat_ref_m = feat_refs_deb[:, m]
+            sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_m, feat_tgt_deb)
             sim_maps.append(sim_m)
-            # debiased
-            feat_ref_m_deb = feat_refs_deb[:, m]
-            deb_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_m_deb, feat_tgt_deb)
-            deb_sim_maps.append(deb_sim_m)
-            
-        self._sim_maps = sim_maps
-        self._deb_sim_maps = deb_sim_maps
-
         candidate_mask = self._locate_candidates(
             sim_maps, ref_masks, feat_tgt_deb, ref_prototype, h, w
         )
@@ -206,6 +207,73 @@ class INSID3(nn.Module):
 
         return self._finalize_mask(pred_mask, tgt_image)
 
+    @torch.no_grad()
+    def get_sim_maps(self) -> Tuple[List[torch.Tensor]]:
+        """Calculate similarity maps.
+
+        Returns:
+            sim_maps: (sim_maps, debiased_sim_maps)
+        """
+        def get_patch_divisible_size(img):
+            if isinstance(img, Image.Image):
+                H, W = img.height, img.width
+            elif isinstance(img, np.ndarray):
+                H, W, C = img.shape
+            elif isinstance(img, torch.Tensor):
+                C, H, W = img.shape
+            else:
+                raise TypeError
+            patch_h = int(H // self._patch_size) # num of patch along height
+            patch_w = int(W // self._patch_size) # num of patch along width
+            new_H = patch_h * self._patch_size
+            new_W = patch_w * self._patch_size
+            return (new_H, new_W)
+        
+        h, w = get_patch_divisible_size(self._tgt_image)
+        tgt_img_transform = build_transform(image_size=(h, w))
+        tgt_img = tgt_img_transform(self._tgt_image)
+        tgt_img = tgt_img.unsqueeze(0).unsqueeze(0) # (C,H,W) → (1,1,C,H,W)
+        tgt_img = tgt_img.to(self.device)
+
+        bias_sim_maps = []
+        deb_sim_maps = []
+
+        S = len(self._ref_images)
+        for s in range(S):
+            ref_img = self._ref_images[s]
+            h, w = get_patch_divisible_size(ref_img)
+            ref_img_transform = build_transform(image_size=(h,w))
+            ref_img = ref_img_transform(ref_img)
+            ref_img = ref_img.unsqueeze(0).unsqueeze(0) # ->(1,1,C,H,W)           
+
+            # Feature extraction
+            ref_img = ref_img.to(self.device)
+
+            ref_fmaps = self._extract_features(ref_img)
+            tgt_fmaps = self._extract_features(tgt_img)
+
+            ref_fmaps_norm = F.normalize(ref_fmaps, p=2, dim=2)
+            tgt_fmaps_norm = F.normalize(tgt_fmaps, p=2, dim=2)
+
+            feat_ref = ref_fmaps_norm[:, :] # -> [1,C,H,W]
+            feat_tgt = tgt_fmaps_norm[:, 0] # -> [1,C,H,W]
+
+            # Positional debiasing
+            feat_refs_deb = self._debias_features(ref_fmaps_norm)
+            feat_tgt_deb = self._debias_features(tgt_fmaps_norm)
+            feat_refs_deb = feat_refs_deb[:, 0] # -> [1,C,H,W]
+            feat_tgt_deb = feat_tgt_deb[:, 0]  # -> [1,C,H,W]
+
+            # Candidate localization (forward + backward matching)
+            # Compute similarity maps between each reference and the target (debiased space)
+            # biased & debiased
+            bias_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_refs_deb, feat_tgt)
+            deb_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_refs_deb, feat_tgt_deb)
+            bias_sim_maps.append(bias_sim_m)
+            deb_sim_maps.append(deb_sim_m)
+
+        return bias_sim_maps, deb_sim_maps
+
     # ──────── Feature extraction ────────
 
     def _extract_features(self, imgs: torch.Tensor) -> torch.Tensor:
@@ -220,8 +288,9 @@ class INSID3(nn.Module):
     def _build_positional_basis(self, device: str) -> torch.Tensor:
         """Estimate the positional subspace from a noise image via SVD."""
         from torchvision.transforms.functional import normalize
+        H, W = self.image_size[0], self.image_size[1]
         noise_img = normalize(
-            torch.zeros(1, 3, self.image_size, self.image_size),
+            torch.zeros(1, 3, H, W),
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225],
         ).to(device)
         noise_fmaps = self.encoder.to(device).get_intermediate_layers(
