@@ -47,25 +47,26 @@ class INSID3(nn.Module):
             self._crf, self._crf_band_px, self._crf_p_core = init_crf(image_size, device)
 
         self._transform = build_transform(image_size)
-        self._ref_images = None
-        self._ref_masks = None
+        self._ref_images = []
+        self._ref_masks = []
         self._tgt_image = None
         self._orig_tgt_size = None
 
         # sim maps
-        self._sim_maps = None
-        self._deb_sim_maps = None
+        self._sim_maps = []
+        self._deb_sim_maps = []
 
-        # patch size of DINOv3 = 16
+        # patch size of DINOv3
         self._patch_size = 16
 
     def reset(self):
-        self._ref_images = None
-        self._ref_masks = None
+        self._ref_images.clear()
+        self._ref_masks.clear()
         self._tgt_image = None
         self._orig_tgt_size = None
-        self._sim_maps = None
-        self._deb_sim_maps = None
+        self._sim_maps.clear()
+        self._deb_sim_maps.clear()
+        print("Clear cached images and sim maps.")
         return
 
     def set_reference(self, image: str | 'Image.Image', mask: str | 'Image.Image' | torch.Tensor) -> None:
@@ -90,12 +91,8 @@ class INSID3(nn.Module):
                 np.array(mask) > 0, dtype=torch.bool
             ).unsqueeze(0)
 
-        if self._ref_images is None:
-            self._ref_images = [image]
-            self._ref_masks = [mask_tensor]
-        else:
-            self._ref_images = self._ref_images.append(image)
-            self._ref_masks = self._ref_masks.append(mask)
+        self._ref_images.append(image)
+        self._ref_masks.append(mask_tensor)
 
     def set_target(self, image: str | 'Image.Image') -> None:
         """Set target image from a file path or PIL Image.
@@ -168,14 +165,14 @@ class INSID3(nn.Module):
 
         # Positional debiasing
         fmaps_debiased = self._debias_features(fmaps_norm)
-        feat_refs_deb = fmaps_debiased[:, :S]
+        feat_ref_deb = fmaps_debiased[:, :S]
         feat_tgt_deb = fmaps_debiased[:, S]
 
         # Reference prototype (averaged across shots)
         ref_prototypes = []
         for s in range(S):
             mask_s = downsample_mask(ref_masks[s:s+1], h, w)
-            fg = feat_refs_deb[0, s, :, mask_s]
+            fg = feat_ref_deb[0, s, :, mask_s]
             if fg.shape[1] > 0:
                 ref_prototypes.append(fg.mean(dim=1))
         ref_prototype = F.normalize(
@@ -186,7 +183,7 @@ class INSID3(nn.Module):
         # Compute similarity maps between each reference and the target (debiased space)
         sim_maps = []
         for m in range(S):
-            feat_ref_m = feat_refs_deb[:, m]
+            feat_ref_m = feat_ref_deb[:, m]
             sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_m, feat_tgt_deb)
             sim_maps.append(sim_m)
         candidate_mask = self._locate_candidates(
@@ -219,50 +216,49 @@ class INSID3(nn.Module):
         Returns:
             sim_maps: (sim_maps, debiased_sim_maps)
         """
-        if self._sim_maps is not None and self._deb_sim_maps is not None:
+        if len(self._sim_maps) != 0 and len(self._deb_sim_maps) != 0:
+            print("Query cached sim maps.")
             return self._sim_maps, self._deb_sim_maps
-       
+
+        self._sim_maps.clear()
+        self._deb_sim_maps.clear()
+
         tgt_img = self._transform(self._tgt_image)
         tgt_img = tgt_img.unsqueeze(0).unsqueeze(0) # (C,H,W) → (1,1,C,H,W)
         tgt_img = tgt_img.to(self.device)
+        tgt_fmaps = self._extract_features(tgt_img)
+        tgt_fmaps_norm = F.normalize(tgt_fmaps, p=2, dim=2)
+        feat_tgt = tgt_fmaps_norm[:, 0] # -> [1,C,H,W]
+        feat_tgt_deb = self._debias_features(tgt_fmaps_norm)
+        feat_tgt_deb = feat_tgt_deb[:, 0]  # -> [1,C,H,W]
 
-        bias_sim_maps = []
-        deb_sim_maps = []
+        
 
         S = len(self._ref_images)
         for s in range(S):
             ref_img = self._ref_images[s]
-            ref_img = self._transform(ref_img)
+            ref_img = self._transform(ref_img) # -> [C,H,W]
             ref_img = ref_img.unsqueeze(0).unsqueeze(0) # ->(1,1,C,H,W)           
 
             # Feature extraction
             ref_img = ref_img.to(self.device)
-
             ref_fmaps = self._extract_features(ref_img)
-            tgt_fmaps = self._extract_features(tgt_img)
-
             ref_fmaps_norm = F.normalize(ref_fmaps, p=2, dim=2)
-            tgt_fmaps_norm = F.normalize(tgt_fmaps, p=2, dim=2)
-
-            feat_ref = ref_fmaps_norm[:, :] # -> [1,C,H,W]
-            feat_tgt = tgt_fmaps_norm[:, 0] # -> [1,C,H,W]
-
+            feat_ref = ref_fmaps_norm[:, 0] # -> [1,C,H,W]
+            
             # Positional debiasing
-            feat_refs_deb = self._debias_features(ref_fmaps_norm)
-            feat_tgt_deb = self._debias_features(tgt_fmaps_norm)
-            feat_refs_deb = feat_refs_deb[:, 0] # -> [1,C,H,W]
-            feat_tgt_deb = feat_tgt_deb[:, 0]  # -> [1,C,H,W]
+            feat_ref_deb = self._debias_features(ref_fmaps_norm)            
+            feat_ref_deb = feat_ref_deb[:, 0] # -> [1,C,H,W]
+
 
             # Candidate localization (forward + backward matching)
             # Compute similarity maps between each reference and the target (debiased space)
             # biased & debiased
-            bias_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_refs_deb, feat_tgt)
-            deb_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_refs_deb, feat_tgt_deb)
-            bias_sim_maps.append(bias_sim_m)
-            deb_sim_maps.append(deb_sim_m)
-        self._sim_maps = bias_sim_maps
-        self._deb_sim_maps = deb_sim_maps
-        return bias_sim_maps, deb_sim_maps
+            bias_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref, feat_tgt)
+            deb_sim_m = torch.einsum('bchw,bcxy->bhwxy', feat_ref_deb, feat_tgt_deb)
+            self._sim_maps.append(bias_sim_m)
+            self._deb_sim_maps.append(deb_sim_m)
+        return self._sim_maps, self._deb_sim_maps
 
     # ──────── Feature extraction ────────
 
