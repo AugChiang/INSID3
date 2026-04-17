@@ -33,7 +33,7 @@ class INSID3(nn.Module):
         device: str = DEVICE,
     ):
         super().__init__()
-        self.encoder = encoder
+        self.encoder = encoder.to(device)
         self.image_size = (image_size, image_size) if isinstance(image_size, int) else image_size
         self.svd_components = svd_components
         self.tau = tau
@@ -41,7 +41,7 @@ class INSID3(nn.Module):
         self.mask_refiner = mask_refiner
         self.resize_to_orig_size = resize_to_orig_size
         self.device = device
-        self.positional_basis = self._build_positional_basis(device)
+        self.positional_basis = self._build_positional_basis()
 
         if mask_refiner == 'crf':
             self._crf, self._crf_band_px, self._crf_p_core = init_crf(image_size, device)
@@ -221,25 +221,8 @@ class INSID3(nn.Module):
         """
         if self._sim_maps is not None and self._deb_sim_maps is not None:
             return self._sim_maps, self._deb_sim_maps
-
-        def get_patch_divisible_size(img):
-            if isinstance(img, Image.Image):
-                H, W = img.height, img.width
-            elif isinstance(img, np.ndarray):
-                H, W, C = img.shape
-            elif isinstance(img, torch.Tensor):
-                C, H, W = img.shape
-            else:
-                raise TypeError
-            patch_h = int(H // self._patch_size) # num of patch along height
-            patch_w = int(W // self._patch_size) # num of patch along width
-            new_H = patch_h * self._patch_size
-            new_W = patch_w * self._patch_size
-            return (new_H, new_W)
-        
-        h, w = get_patch_divisible_size(self._tgt_image)
-        tgt_img_transform = build_transform(image_size=(h, w))
-        tgt_img = tgt_img_transform(self._tgt_image)
+       
+        tgt_img = self._transform(self._tgt_image)
         tgt_img = tgt_img.unsqueeze(0).unsqueeze(0) # (C,H,W) → (1,1,C,H,W)
         tgt_img = tgt_img.to(self.device)
 
@@ -249,9 +232,7 @@ class INSID3(nn.Module):
         S = len(self._ref_images)
         for s in range(S):
             ref_img = self._ref_images[s]
-            h, w = get_patch_divisible_size(ref_img)
-            ref_img_transform = build_transform(image_size=(h,w))
-            ref_img = ref_img_transform(ref_img)
+            ref_img = self._transform(ref_img)
             ref_img = ref_img.unsqueeze(0).unsqueeze(0) # ->(1,1,C,H,W)           
 
             # Feature extraction
@@ -294,15 +275,14 @@ class INSID3(nn.Module):
     # ──────── Positional debiasing ────────
 
     @torch.no_grad()
-    def _build_positional_basis(self, device: str) -> torch.Tensor:
+    def _build_positional_basis(self) -> torch.Tensor:
         """Estimate the positional subspace from a noise image via SVD."""
         from torchvision.transforms.functional import normalize
-        H, W = self.image_size[0], self.image_size[1]
         noise_img = normalize(
-            torch.zeros(1, 3, H, W),
+            torch.zeros(1, 3, self.image_size[0], self.image_size[1]),
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225],
-        ).to(device)
-        noise_fmaps = self.encoder.to(device).get_intermediate_layers(
+        ).to(self.device)
+        noise_fmaps = self.encoder.get_intermediate_layers(
             noise_img, n=1, reshape=True
         )[0]
         noise_fmaps = F.normalize(noise_fmaps, p=2, dim=1)
