@@ -32,6 +32,20 @@ class INSID3(nn.Module):
         resize_to_orig_size: bool = True,
         device: str = DEVICE,
     ):
+        """
+
+        Args:
+            encoder: i.e. DINOv3
+            image_size: expected input shape (square). Defaults to 1024.
+            svd_components: 
+                Number of singular vectors to define positional subspace for debiasing DINOv3 features. Defaults to 500.
+                Higher values may remove more positional bias but could potentially affect semantic features.
+                The default of 500 was found to work well across various domains in the paper.
+            tau: Defaults to 0.6.
+            merge_threshold: Defaults to 0.2.
+            mask_refiner: Defaults to "bilinear".
+            resize_to_orig_size: Defaults to True.
+        """
         super().__init__()
         self.encoder = encoder.to(device)
         self.image_size = (image_size, image_size) if isinstance(image_size, int) else image_size
